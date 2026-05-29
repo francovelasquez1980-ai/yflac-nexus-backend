@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Y-FLAC // NEXUS DOWNLOADER</title>
+    <style>
+        :root {
+            --bg-color: #0a0a12;
+            --panel-bg: #121225;
+            --neon-cyan: #00f0ff;
+            --neon-magenta: #ff007f;
+            --text-color: #e2e8f0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, #1e1e38 0%, #0a0a12 80%);
+        }
+
+        .container {
+            background: var(--panel-bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.15), inset 0 0 15px rgba(255, 0, 127, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            position: relative;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 16px;
+            pointer-events: none;
+            box-shadow: 0 0 0 2px var(--neon-magenta);
+            clip-path: inset(0 85% 95% 0);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+            letter-spacing: 4px;
+            color: #fff;
+            text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+        }
+
+        p.subtitle {
+            color: var(--neon-magenta);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 5px rgba(255, 0, 127, 0.5);
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            background: #07070d;
+            border: 1px solid #2d2d54;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+        }
+
+        .format-group {
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .format-label {
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            color: var(--text-color);
+        }
+
+        select {
+            padding: 10px 15px;
+            background: #07070d;
+            border: 1px solid var(--neon-cyan);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 0 0 5px rgba(0, 240, 255, 0.2);
+        }
+
+        select:focus {
+            box-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: transparent;
+            border: 2px solid var(--neon-magenta);
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            background: var(--neon-magenta);
+            box-shadow: 0 0 25px var(--neon-magenta);
+            text-shadow: 0 0 5px #fff;
+        }
+
+        .status-container {
+            margin-top: 25px;
+            display: none;
+        }
+
+        .status-text {
+            font-size: 0.9rem;
+            color: var(--neon-cyan);
+            margin-bottom: 15px;
+            letter-spacing: 1px;
+            word-break: break-all;
+        }
+
+        .loader {
+            width: 100%;
+            height: 4px;
+            background-color: #07070d;
+            position: relative;
+            overflow: hidden;
+            border-radius: 2px;
+        }
+
+        .loader::after {
+            content: '';
+            position: absolute;
+            left: -50%;
+            height: 100%;
+            width: 40%;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+            animation: loading 1.5s infinite linear;
+        }
+
+        @keyframes loading {
+            0% { left: -50%; }
+            100% { left: 150%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Y-FLAC</h1>
+        <p class="subtitle">Quantum Audio Extractor</p>
+        
+        <div class="input-group">
+            <input type="text" id="videoUrl" placeholder="INSERTE LINK DE SOUNDCLOUD O YOUTUBE...">
+        </div>
+
+        <div class="format-group">
+            <span class="format-label">FORMATO DE SALIDA:</span>
+            <select id="formatoAudio">
+                <option value="flac">FLAC (Lossless Original)</option>
+                <option value="mp3">MP3 (Máxima Calidad 320kbps)</option>
+            </select>
+        </div>
+        
+        <button id="btnDescargar" onclick="iniciarDescarga()">Iniciar Extracción</button>
+
+        <div class="status-container" id="statusContainer">
+            <div class="status-text" id="statusText">CONECTANDO CON EL SERVIDOR INTERNO...</div>
+            <div class="loader"></div>
+        </div>
+    </div>
+
+    <script>
+        async function iniciarDescarga() {
+            const urlInput = document.getElementById('videoUrl');
+            const formatoSelect = document.getElementById('formatoAudio').value;
+            const btn = document.getElementById('btnDescargar');
+            const statusContainer = document.getElementById('statusContainer');
+            const statusText = document.getElementById('statusText');
+
+            const urlValue = urlInput.value.trim();
+
+            if (!urlValue) {
+                alert('Por favor, ingrese un enlace cuántico válido.');
+                return;
+            }
+
+            // Detectar la plataforma para armar el mensaje estético
+            let plataforma = "LA PLATAFORMA";
+            if (urlValue.includes('youtube.com') || urlValue.includes('youtu.be')) plataforma = "YOUTUBE";
+            if (urlValue.includes('soundcloud.com')) plataforma = "SOUNDCLOUD";
+
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            statusContainer.style.display = 'block';
+            statusText.innerText = `CONECTANDO Y RECONOCIENDO ENLACE DE ${plataforma}...`;
+
+            try {
+                // 🛑 ATENCIÓN AQUÍ: Cuando tengas tu URL de Render, reemplaza esta URL de ejemplo por la tuya.
+                // Ejemplo: 'https://mi-extractor-backend.onrender.com/descargar'
+                const urlServidorEnLaNube = 'https://URL-DE-TU-SERVIDOR-EN-RENDER.com/descargar';
+
+                const response = await fetch(urlServidorEnLaNube, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: urlValue, formato: formatoSelect })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Error en la conversión.');
+                }
+
+                statusText.innerText = `EXTRAYENDO MULTIMEDIA DE ${plataforma} A [${formatoSelect.toUpperCase()}]...`;
+
+                let nombreArchivo = `audio_extraido.${formatoSelect}`;
+                const contentDisposition = response.headers.get('content-disposition');
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename="(.+)"/);
+                    if (match && match[1]) {
+                        nombreArchivo = match[1];
+                    }
+                }
+
+                const blob = await response.blob();
+                const urlDescarga = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = urlDescarga;
+                a.download = nombreArchivo;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                statusText.innerText = '💥 ¡EXTRACCIÓN EXITOSA! ARCHIVO TRANSFERIDO.';
+                
+                setTimeout(() => {
+                    urlInput.value = ''; 
+                    statusContainer.style.display = 'none'; 
+                }, 3000); 
+
+            } catch (error) {
+                statusText.innerText = '❌ ERROR EN EL SISTEMA: ' + error.message;
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+    </script>
+</body>
+</html>
