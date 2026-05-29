@@ -1,3 +1,9 @@
+const express = require('express');
+const cors = require('cors'); // <--- 1. Agrega esta línea
+const app = express();
+
+app.use(cors()); // <--- 2. Agrega esta línea antes de tus rutas (como app.post('/descargar'))
+app.use(express.json());
 import express from 'express';
 import ffmpegStatic from 'ffmpeg-static';
 import { execFile } from 'child_process';
