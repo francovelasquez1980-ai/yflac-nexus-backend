@@ -14,16 +14,21 @@ app.use(express.json());
 const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, 'public')));
 
-// RUTA INTELIGENTE: En Windows usa tu ejecutable local. En Linux (Render) busca el binario autodescargado por el paquete.
+// RUTA INTELIGENTE: Detecta si está en tu Windows o en el Linux de Render
 const rutaYtdlp = process.platform === 'win32' 
     ? path.join(__dirname, 'yt-dlp.exe') 
     : path.join(__dirname, 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp');
 
 app.post('/descargar', async (req, res) => {
-    const { url, formato } = req.body;
+    let { url, formato } = req.body;
 
     if (!url) {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
+    }
+
+    // Limpieza automática de links (elimina rastreos de compartir como ?utm_source...)
+    if (url.includes('?')) {
+        url = url.split('?')[0];
     }
 
     const carpetaDescargas = path.join(__dirname, 'downloads');
@@ -41,10 +46,10 @@ app.post('/descargar', async (req, res) => {
 
     const plantillaSalida = path.join(carpetaDescargas, `nexus_audio_%(title)s.%(ext)s`);
     
-    // Comando unificado apuntando a la ruta del sistema correspondiente
+    // Comando blindado con la carátula incluida (--embed-thumbnail)
     const comando = `"${rutaYtdlp}" -x ${comandosAdicionales} --embed-thumbnail --output "${plantillaSalida}" "${url}"`;
 
-    console.log(`[NEXUS] Procesando extracción en la nube: ${comando}`);
+    console.log(`[NEXUS] Procesando extracción con carátula en la nube: ${comando}`);
 
     exec(comando, (error, stdout, stderr) => {
         if (error) {
@@ -56,7 +61,7 @@ app.post('/descargar', async (req, res) => {
         const archivoProcesado = archivos.find(f => f.endsWith(`.${formatoAudio}`));
 
         if (!archivoProcesado) {
-            return res.status(500).json({ error: 'El motor no logró consolidar el archivo de salida.' });
+            return res.status(500).json({ error: 'El motor no logró consolidar el archivo de salida con su carátula.' });
         }
 
         const rutaArchivoCompleta = path.join(carpetaDescargas, archivoProcesado);
