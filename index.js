@@ -35,12 +35,12 @@ app.post('/descargar', async (req, res) => {
     try {
         const info = await soundcloudDescargar.getInfo(url);
         
-        // CORRECCIÓN DEFINITIVA: Removemos tildes, eñes y caracteres raros para que el Header no explote
+        // CORRECCIÓN DE LA EXPRESIÓN REGULAR: Deja solo letras, números, guiones y espacios sanos
         const tituloSeguro = (info.title || `track_${idTemporal}`)
             .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Quita tildes
-            .replace(/[^a-zA- Directo0-9_.-]/g, "_") // Reemplaza la ñ y raros por guion bajo
-            .replace(/\s+/g, '_');
+            .replace(/[\u0300-\u036f]/g, "") // Quita tildes de forma segura
+            .replace(/[^a-zA-Z0-9\s_.-]/g, "_") // Reemplaza cualquier carácter raro por un guion bajo
+            .replace(/\s+/g, '_'); // Convierte espacios en guiones bajos para las cabeceras
 
         const artista = info.user?.username || 'Nexus Extractor';
         
@@ -91,7 +91,7 @@ app.post('/descargar', async (req, res) => {
 
         console.log(`[NEXUS HQ] Transmitiendo archivo final: ${tituloSeguro}.${extension}`);
 
-        // Encapsulado estricto con caracteres limpios
+        // Cabeceras HTTP 100% limpias y seguras
         res.setHeader('Content-Disposition', `attachment; filename="${tituloSeguro}.${extension}"`);
         res.setHeader('Content-Type', esFlac ? 'audio/x-flac' : 'audio/mpeg');
         res.setHeader('Content-Length', audioFinalConTags.length);
@@ -108,5 +108,5 @@ app.post('/descargar', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Motor de Inyección Multi-Caracteres Activo.`);
+    console.log(`🚀 Motor de Inyección de Metadatos listo y reparado.`);
 });
