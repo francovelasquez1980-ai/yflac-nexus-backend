@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import ytdl from '@distube/ytdl-core';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,62 +14,68 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    // LIMPIEZA INTELIGENTE: Solo corta el '?' si NO es un link de YouTube estándar
-    if (url.includes('?') && !url.includes('watch?v=') && !url.includes('youtu.be/')) {
-        url = url.split('?')[0];
+    // Limpieza básica de la URL
+    if (url.includes('?')) {
+        // Preservamos el ID de YouTube por si acaso, si no, limpiamos normal
+        if (!url.includes('watch?v=') && !url.includes('youtu.be/')) {
+            url = url.split('?')[0];
+        }
     }
 
+    const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
+    console.log(`[NEXUS HYBRID] Solicitando extracción para: ${url} en formato ${formatoAudio}`);
+
     try {
-        console.log(`[NEXUS NATIVO] Procesando URL: ${url}`);
+        // Usamos un endpoint de extracción masiva optimizado para apps en la nube
+        const apiFetchUrl = `https://api.cobalt.tools/api/json`;
         
-        // Validador tolerante: Si contiene youtube o youtu.be, lo damos por bueno para saltar bloqueos
-        const esValido = ytdl.validateURL(url) || url.includes('youtube.com') || url.includes('youtu.be');
-        
-        if (!esValido) {
-            return res.status(400).json({ error: 'La URL proporcionada no es válida o no está soportada todavía.' });
+        const respuestaCobalt = await fetch(apiFetchUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: url,
+                filenamePattern: 'nerd',
+                audioFormat: formatoAudio,
+                isAudioOnly: true
+            })
+        });
+
+        if (!respuestaCobalt.ok) {
+            throw new Error('El nodo extractor externo rechazó la petición.');
         }
 
-        console.log(`[NEXUS NATIVO] Extrayendo información de las API...`);
-        const info = await ytdl.getInfo(url);
-        
-        // Reemplazar caracteres problemáticos para el nombre del archivo
-        const tituloLimpio = info.videoDetails.title.replace(/[/\\?%*:|"<>\s]/g, '_');
-        const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
+        const data = await respuestaCobalt.json();
 
-        console.log(`[NEXUS NATIVO] Transmitiendo: ${tituloLimpio} (.${formatoAudio})`);
+        // Si la API nos devuelve un estado de error o no nos da un link directo
+        if (data.status === 'error' || !data.url) {
+            return res.status(400).json({ 
+                error: 'La plataforma origen bloqueó la extracción masiva.',
+                detalles: data.text || 'Intenta con otro enlace.' 
+            });
+        }
 
-        // Cabeceras de descarga directa
-        res.setHeader('Content-Disposition', `attachment; filename="nexus_audio_${tituloLimpio}.${formatoAudio}"`);
-        res.setHeader('Content-Type', 'audio/mpeg');
+        console.log(`[NEXUS HYBRID] ¡Extracción exitosa! Redireccionando flujo de datos...`);
 
-        // Flujo de audio directo de alta calidad
-        const streamAudio = ytdl(url, {
-            quality: 'highestaudio',
-            filter: 'audioonly'
-        });
-
-        streamAudio.pipe(res);
-
-        streamAudio.on('end', () => {
-            console.log(`[NEXUS NATIVO] ¡Descarga exitosa de ${tituloLimpio}!`);
-        });
-
-        streamAudio.on('error', (streamErr) => {
-            console.error('[NEXUS STREAM ERROR]:', streamErr);
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Error durante la transmisión del audio.' });
-            }
+        // Le respondemos a tu Netlify enviándole el enlace directo de descarga de alta velocidad
+        // Para que la barra de carga de tu interfaz reaccione de inmediato.
+        return res.json({ 
+            success: true, 
+            downloadUrl: data.url, 
+            title: `nexus_audio_${Date.now()}.${formatoAudio}` 
         });
 
     } catch (error) {
-        console.error(`[NEXUS CORE ERROR]:`, error);
+        console.error(`[NEXUS HYBRID ERROR]:`, error);
         return res.status(500).json({ 
-            error: 'El motor nativo falló al conectar con YouTube.', 
+            error: 'Los servidores de extracción están saturados en este momento.', 
             detalles: error.message 
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor Nexus Multi-Formato Inteligente activo en puerto ${PORT}`);
+    console.log(`🚀 Sistema Nexus Híbrido e Imbatible activo en puerto ${PORT}`);
 });
