@@ -1,12 +1,15 @@
 import express from 'express';
 import cors from 'cors';
-import ytdl from '@distube/ytdl-core';
+import scdl from 'soundcloud-downloader';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// Instancia del descargador nativo de SoundCloud
+const soundcloudDescargar = scdl.default;
 
 app.post('/descargar', async (req, res) => {
     let { url, formato } = req.body;
@@ -15,53 +18,54 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    console.log(`[NEXUS DIRECTO] Petición recibida para URL: ${url}`);
+    // Limpiar enlaces de rastreo de SoundCloud (?si=... o ?utm_source...)
+    if (url.includes('?')) {
+        url = url.split('?')[0];
+    }
+
+    console.log(`[NEXUS SOUNDCLOUD] Solicitud de extracción para: ${url}`);
 
     try {
-        // Forzamos la obtención de información saltándonos restricciones básicas
-        const info = await ytdl.getInfo(url, {
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-            }
-        });
-
-        const tituloLimpio = info.videoDetails.title.replace(/[/\\?%*:|"<>\s]/g, '_');
+        // 1. Obtener la información de la canción (Título)
+        console.log(`[NEXUS SOUNDCLOUD] Obteniendo metadatos...`);
+        const info = await soundcloudDescargar.getInfo(url);
+        
+        // Limpiar el título de caracteres extraños para el archivo de salida
+        const tituloLimpio = (info.title || `soundcloud_track_${Date.now()}`).replace(/[/\\?%*:|"<>\s]/g, '_');
         const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
 
-        console.log(`[NEXUS DIRECTO] Extrayendo audio stream de: ${tituloLimpio}`);
+        console.log(`[NEXUS SOUNDCLOUD] Extrayendo audio para: ${tituloLimpio}`);
 
-        // Configuramos la respuesta como un archivo binario de descarga directa para tu Netlify
+        // 2. Configurar las cabeceras del archivo binario
         res.setHeader('Content-Disposition', `attachment; filename="nexus_${tituloLimpio}.${formatoAudio}"`);
         res.setHeader('Content-Type', 'audio/mpeg');
 
-        // Obtenemos el flujo de audio puro directamente de los servidores de contenido
-        const audioStream = ytdl(url, {
-            quality: 'highestaudio',
-            filter: 'audioonly',
-            highWaterMark: 1 << 25 // Buffer de 32MB para evitar cortes en Render
+        // 3. Descargar el flujo de audio directo desde los servidores de SoundCloud
+        const streamAudio = await soundcloudDescargar.download(url);
+
+        // 4. Conectar el flujo de SoundCloud directo a tu Netlify
+        streamAudio.pipe(res);
+
+        streamAudio.on('end', () => {
+            console.log(`[NEXUS SOUNDCLOUD] ¡Descarga completada con éxito!`);
         });
 
-        // Conectamos el flujo de YouTube directo al navegador del usuario pasando por Render
-        audioStream.pipe(res);
-
-        audioStream.on('error', (err) => {
-            console.error('[STREAM ERROR]:', err);
+        streamAudio.on('error', (streamErr) => {
+            console.error('[NEXUS SOUNDCLOUD STREAM ERROR]:', streamErr);
             if (!res.headersSent) {
-                res.status(500).json({ error: 'Error en la transmisión del flujo de audio.' });
+                res.status(500).json({ error: 'Error durante la transmisión del archivo de audio.' });
             }
         });
 
     } catch (error) {
-        console.error(`[NEXUS DIRECT ERROR]:`, error);
+        console.error(`[NEXUS SOUNDCLOUD ERROR]:`, error);
         return res.status(500).json({ 
-            error: 'YouTube está rechazando la conexión directa desde el servidor.', 
+            error: 'No se pudo conectar con SoundCloud o el enlace no es público.', 
             detalles: error.message 
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor Nexus de Flujo Directo activo en puerto ${PORT}`);
+    console.log(`🚀 Servidor Nexus Especializado en SoundCloud activo en puerto ${PORT}`);
 });
