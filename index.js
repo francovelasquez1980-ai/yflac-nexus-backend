@@ -14,68 +14,70 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    // Limpieza básica de la URL
+    // Limpieza inteligente de URLs para evitar conflictos
     if (url.includes('?')) {
-        // Preservamos el ID de YouTube por si acaso, si no, limpiamos normal
         if (!url.includes('watch?v=') && !url.includes('youtu.be/')) {
             url = url.split('?')[0];
         }
     }
 
     const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
-    console.log(`[NEXUS HYBRID] Solicitando extracción para: ${url} en formato ${formatoAudio}`);
+    console.log(`[NEXUS HYBRID] Extrayendo enlace para: ${url} en formato ${formatoAudio}`);
 
-    try {
-        // Usamos un endpoint de extracción masiva optimizado para apps en la nube
-        const apiFetchUrl = `https://api.cobalt.tools/api/json`;
-        
-        const respuestaCobalt = await fetch(apiFetchUrl, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                url: url,
-                filenamePattern: 'nerd',
-                audioFormat: formatoAudio,
-                isAudioOnly: true
-            })
-        });
+    // Lista de endpoints alternativos por si uno se satura
+    const apis = [
+        'https://co.wuk.sh/api/json',
+        'https://api.cobalt.tools/api/json'
+    ];
 
-        if (!respuestaCobalt.ok) {
-            throw new Error('El nodo extractor externo rechazó la petición.');
-        }
+    let exito = false;
+    let dataResult = null;
 
-        const data = await respuestaCobalt.json();
-
-        // Si la API nos devuelve un estado de error o no nos da un link directo
-        if (data.status === 'error' || !data.url) {
-            return res.status(400).json({ 
-                error: 'La plataforma origen bloqueó la extracción masiva.',
-                detalles: data.text || 'Intenta con otro enlace.' 
+    // Intentamos con el primer servidor, si falla, salta al segundo automáticamente
+    for (const apiUrl of apis) {
+        try {
+            console.log(`[NEXUS HYBRID] Intentando conexión con nodo: ${apiUrl}`);
+            const respuesta = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    filenamePattern: 'nerd',
+                    audioFormat: formatoAudio,
+                    isAudioOnly: true
+                })
             });
+
+            if (respuesta.ok) {
+                const data = await respuesta.json();
+                if (data.status !== 'error' && data.url) {
+                    dataResult = data;
+                    exito = true;
+                    break; // Rompemos el ciclo porque ya funcionó
+                }
+            }
+        } catch (err) {
+            console.warn(`[NEXUS WARNING] El nodo ${apiUrl} no respondió, probando el siguiente...`);
         }
+    }
 
-        console.log(`[NEXUS HYBRID] ¡Extracción exitosa! Redireccionando flujo de datos...`);
-
-        // Le respondemos a tu Netlify enviándole el enlace directo de descarga de alta velocidad
-        // Para que la barra de carga de tu interfaz reaccione de inmediato.
+    if (exito && dataResult) {
+        console.log(`[NEXUS HYBRID] ¡Extracción exitosa en nodo secundario! Enviando link...`);
         return res.json({ 
             success: true, 
-            downloadUrl: data.url, 
+            downloadUrl: dataResult.url, 
             title: `nexus_audio_${Date.now()}.${formatoAudio}` 
         });
-
-    } catch (error) {
-        console.error(`[NEXUS HYBRID ERROR]:`, error);
+    } else {
         return res.status(500).json({ 
-            error: 'Los servidores de extracción están saturados en este momento.', 
-            detalles: error.message 
+            error: 'Los nodos de extracción libres de restricciones están saturados. Inténtalo de nuevo en unos segundos o usa otra URL.' 
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Sistema Nexus Híbrido e Imbatible activo en puerto ${PORT}`);
+    console.log(`🚀 Sistema Nexus Redundante activo en puerto ${PORT}`);
 });
