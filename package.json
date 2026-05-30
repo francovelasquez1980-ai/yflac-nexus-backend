@@ -1,7 +1,7 @@
 {
   "name": "y-flac",
   "version": "1.0.0",
-  "description": "Nexus Audio Extractor",
+  "description": "Nexus Multi-Formato Inteligent Audio Extractor",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "soundcloud-downloader": "^1.0.0"
+    "soundcloud-downloader": "^1.0.0",
+    "node-id3": "^0.2.6"
   }
 }
