@@ -13,10 +13,10 @@ app.use(express.json());
 const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, 'public')));
 
-// RUTA CRUCIAL: En Windows busca tu ejecutable local. En Linux (Render) usaremos el comando global directo del sistema.
+// RUTA AJUSTADA PARA EL PLAN A (OPCIÓN 2): Apuesta por la carpeta local en Render
 const rutaYtdlp = process.platform === 'win32' 
     ? path.join(__dirname, 'yt-dlp.exe') 
-    : 'yt-dlp';
+    : path.join(__dirname, 'node_modules', '.bin', 'yt-dlp');
 
 app.post('/descargar', async (req, res) => {
     let { url, formato } = req.body;
@@ -25,7 +25,6 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    // Limpieza radical de enlaces (fuera cadenas de rastreo ?utm_...)
     if (url.includes('?')) {
         url = url.split('?')[0];
     }
@@ -45,10 +44,10 @@ app.post('/descargar', async (req, res) => {
 
     const plantillaSalida = path.join(carpetaDescargas, `nexus_audio_%(title)s.%(ext)s`);
     
-    // Comando directo de consola con la carátula habilitada
+    // Comando directo de consola manteniendo las carátulas activas
     const comando = `"${rutaYtdlp}" -x ${comandosAdicionales} --embed-thumbnail --output "${plantillaSalida}" "${url}"`;
 
-    console.log(`[NEXUS PLAN A] Ejecutando en consola: ${comando}`);
+    console.log(`[NEXUS PLAN A - OPT 2] Ejecutando: ${comando}`);
 
     exec(comando, (error, stdout, stderr) => {
         if (error) {
@@ -79,5 +78,5 @@ app.post('/descargar', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor Nexus Multi-Formato [PLAN A] activo en puerto ${PORT}`);
+    console.log(`🚀 Servidor Nexus [PLAN A - OPT 2] activo en puerto ${PORT}`);
 });
