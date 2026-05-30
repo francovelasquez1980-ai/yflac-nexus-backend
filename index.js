@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import ytdl from '@distube/ytdl-core';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,70 +15,53 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    // Limpieza inteligente de URLs para evitar conflictos
-    if (url.includes('?')) {
-        if (!url.includes('watch?v=') && !url.includes('youtu.be/')) {
-            url = url.split('?')[0];
-        }
-    }
+    console.log(`[NEXUS DIRECTO] Petición recibida para URL: ${url}`);
 
-    const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
-    console.log(`[NEXUS HYBRID] Extrayendo enlace para: ${url} en formato ${formatoAudio}`);
-
-    // Lista de endpoints alternativos por si uno se satura
-    const apis = [
-        'https://co.wuk.sh/api/json',
-        'https://api.cobalt.tools/api/json'
-    ];
-
-    let exito = false;
-    let dataResult = null;
-
-    // Intentamos con el primer servidor, si falla, salta al segundo automáticamente
-    for (const apiUrl of apis) {
-        try {
-            console.log(`[NEXUS HYBRID] Intentando conexión con nodo: ${apiUrl}`);
-            const respuesta = await fetch(apiUrl, {
-                method: 'POST',
+    try {
+        // Forzamos la obtención de información saltándonos restricciones básicas
+        const info = await ytdl.getInfo(url, {
+            requestOptions: {
                 headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    url: url,
-                    filenamePattern: 'nerd',
-                    audioFormat: formatoAudio,
-                    isAudioOnly: true
-                })
-            });
-
-            if (respuesta.ok) {
-                const data = await respuesta.json();
-                if (data.status !== 'error' && data.url) {
-                    dataResult = data;
-                    exito = true;
-                    break; // Rompemos el ciclo porque ya funcionó
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 }
             }
-        } catch (err) {
-            console.warn(`[NEXUS WARNING] El nodo ${apiUrl} no respondió, probando el siguiente...`);
-        }
-    }
-
-    if (exito && dataResult) {
-        console.log(`[NEXUS HYBRID] ¡Extracción exitosa en nodo secundario! Enviando link...`);
-        return res.json({ 
-            success: true, 
-            downloadUrl: dataResult.url, 
-            title: `nexus_audio_${Date.now()}.${formatoAudio}` 
         });
-    } else {
+
+        const tituloLimpio = info.videoDetails.title.replace(/[/\\?%*:|"<>\s]/g, '_');
+        const formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
+
+        console.log(`[NEXUS DIRECTO] Extrayendo audio stream de: ${tituloLimpio}`);
+
+        // Configuramos la respuesta como un archivo binario de descarga directa para tu Netlify
+        res.setHeader('Content-Disposition', `attachment; filename="nexus_${tituloLimpio}.${formatoAudio}"`);
+        res.setHeader('Content-Type', 'audio/mpeg');
+
+        // Obtenemos el flujo de audio puro directamente de los servidores de contenido
+        const audioStream = ytdl(url, {
+            quality: 'highestaudio',
+            filter: 'audioonly',
+            highWaterMark: 1 << 25 // Buffer de 32MB para evitar cortes en Render
+        });
+
+        // Conectamos el flujo de YouTube directo al navegador del usuario pasando por Render
+        audioStream.pipe(res);
+
+        audioStream.on('error', (err) => {
+            console.error('[STREAM ERROR]:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Error en la transmisión del flujo de audio.' });
+            }
+        });
+
+    } catch (error) {
+        console.error(`[NEXUS DIRECT ERROR]:`, error);
         return res.status(500).json({ 
-            error: 'Los nodos de extracción libres de restricciones están saturados. Inténtalo de nuevo en unos segundos o usa otra URL.' 
+            error: 'YouTube está rechazando la conexión directa desde el servidor.', 
+            detalles: error.message 
         });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Sistema Nexus Redundante activo en puerto ${PORT}`);
+    console.log(`🚀 Servidor Nexus de Flujo Directo activo en puerto ${PORT}`);
 });
