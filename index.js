@@ -2,22 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { exec } from 'child_process';
+import ytDlp from 'yt-dlp-exec';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Habilitar CORS y lectura de JSON global
 app.use(cors());
 app.use(express.json());
 
 const __dirname = path.resolve();
-app.use(express.static(path.join(__dirname, 'public')));
-
-// RUTA INTELIGENTE: Detecta si está en tu Windows o en el Linux de Render
-const rutaYtdlp = process.platform === 'win32' 
-    ? path.join(__dirname, 'yt-dlp.exe') 
-    : path.join(__dirname, 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp');
 
 app.post('/descargar', async (req, res) => {
     let { url, formato } = req.body;
@@ -26,7 +19,6 @@ app.post('/descargar', async (req, res) => {
         return res.status(400).json({ error: 'Falta la URL del recurso.' });
     }
 
-    // Limpieza automática de links (elimina rastreos de compartir como ?utm_source...)
     if (url.includes('?')) {
         url = url.split('?')[0];
     }
@@ -36,47 +28,52 @@ app.post('/descargar', async (req, res) => {
         fs.mkdirSync(carpetaDescargas);
     }
 
-    let formatoAudio = 'flac';
-    let comandosAdicionales = '--audio-format flac';
+    let formatoAudio = formato === 'mp3' ? 'mp3' : 'flac';
+    
+    console.log(`[NEXUS] Extracción nativa iniciada para: ${url} (${formatoAudio})`);
 
-    if (formato === 'mp3') {
-        formatoAudio = 'mp3';
-        comandosAdicionales = '--audio-format mp3 --audio-quality 0';
+    // Configuramos los argumentos como un objeto nativo de Node, evitando colisiones de consola
+    const opciones = {
+        extractAudio: true,
+        audioFormat: formatoAudio,
+        embedThumbnail: true,
+        output: path.join(carpetaDescargas, `nexus_audio_%(title)s.%(ext)s`),
+        noCheckCertificates: true,
+        preferFreeFormats: true
+    };
+
+    if (formatoAudio === 'mp3') {
+        opciones.audioQuality = '0';
     }
 
-    const plantillaSalida = path.join(carpetaDescargas, `nexus_audio_%(title)s.%(ext)s`);
-    
-    // Comando blindado con la carátula incluida (--embed-thumbnail)
-    const comando = `"${rutaYtdlp}" -x ${comandosAdicionales} --embed-thumbnail --output "${plantillaSalida}" "${url}"`;
+    // Ejecución directa sin pasar por 'exec' de consola
+    ytDlp(url, opciones)
+        .then(() => {
+            const archivos = fs.readdirSync(carpetaDescargas);
+            const archivoProcesado = archivos.find(f => f.endsWith(`.${formatoAudio}`));
 
-    console.log(`[NEXUS] Procesando extracción con carátula en la nube: ${comando}`);
-
-    exec(comando, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`[NEXUS ERROR]:`, error);
-            return res.status(500).json({ error: 'Error interno en el motor de extracción.', detalles: error.message });
-        }
-
-        const archivos = fs.readdirSync(carpetaDescargas);
-        const archivoProcesado = archivos.find(f => f.endsWith(`.${formatoAudio}`));
-
-        if (!archivoProcesado) {
-            return res.status(500).json({ error: 'El motor no logró consolidar el archivo de salida con su carátula.' });
-        }
-
-        const rutaArchivoCompleta = path.join(carpetaDescargas, archivoProcesado);
-
-        res.download(rutaArchivoCompleta, archivoProcesado, (err) => {
-            if (err) {
-                console.error(`[NEXUS ERROR] Error al enviar archivo:`, err);
+            if (!archivoProcesado) {
+                return res.status(500).json({ error: 'Archivo procesado pero no localizado en disco.' });
             }
-            try {
-                fs.unlinkSync(rutaArchivoCompleta);
-            } catch (cleanupError) {
-                console.error(`[NEXUS WARNING] No se pudo borrar el temporal:`, cleanupError);
-            }
+
+            const rutaArchivoCompleta = path.join(carpetaDescargas, archivoProcesado);
+
+            res.download(rutaArchivoCompleta, archivoProcesado, (err) => {
+                if (err) console.error(`[NEXUS ERROR] Error en envío:`, err);
+                try {
+                    fs.unlinkSync(rutaArchivoCompleta);
+                } catch (ce) {
+                    console.error(`[NEXUS WARNING] No se borró el temporal:`, ce);
+                }
+            });
+        })
+        .catch((error) => {
+            console.error(`[NEXUS CORE ERROR]:`, error);
+            return res.status(500).json({ 
+                error: 'Error interno en el motor de extracción.', 
+                detalles: error.message 
+            });
         });
-    });
 });
 
 app.listen(PORT, () => {
