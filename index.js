@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import scdl from 'soundcloud-downloader';
+import ID3 from 'node-id3';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,37 +24,89 @@ app.post('/descargar', async (req, res) => {
         url = url.split('?')[0];
     }
 
-    console.log(`[NEXUS] Petición para: ${url}`);
+    const esFlac = formato === 'flac';
+    const extension = esFlac ? 'flac' : 'mp3';
+    
+    const idTemporal = Date.now();
+    const rutaTemporalAudio = path.join('/tmp', `audio_${idTemporal}.mp3`);
+
+    console.log(`[NEXUS HQ] Iniciando descarga premium limpia para: ${url}`);
 
     try {
-        // Obtener la info básica para sacar el título real de la canción
-        const info = await soundcloudDescargar.getInfo(url).catch(() => ({ title: `nexus_track_${Date.now()}` }));
-        const tituloLimpio = (info.title || 'audio').replace(/[/\\?%*:|"<>\s]/g, '_');
-        const extension = formato === 'flac' ? 'flac' : 'mp3';
+        const info = await soundcloudDescargar.getInfo(url);
+        
+        // CORRECCIÓN DEFINITIVA: Removemos tildes, eñes y caracteres raros para que el Header no explote
+        const tituloSeguro = (info.title || `track_${idTemporal}`)
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Quita tildes
+            .replace(/[^a-zA- Directo0-9_.-]/g, "_") // Reemplaza la ñ y raros por guion bajo
+            .replace(/\s+/g, '_');
 
-        console.log(`[NEXUS] Transmitiendo flujo nativo: ${tituloLimpio}.${extension}`);
+        const artista = info.user?.username || 'Nexus Extractor';
+        
+        let urlCaratula = info.artwork_url || info.user?.avatar_url || '';
+        if (urlCaratula.includes('-large.')) {
+            urlCaratula = urlCaratula.replace('-large.', '-t500x500.');
+        }
 
-        // Le avisamos al navegador el nombre real del archivo y que es un archivo de música
-        res.setHeader('Content-Disposition', `attachment; filename="${tituloLimpio}.${extension}"`);
-        res.setHeader('Content-Type', formato === 'flac' ? 'audio/x-flac' : 'audio/mpeg');
-
-        // Descargar el flujo directo desde SoundCloud
+        console.log(`[NEXUS HQ] Bajando buffer local...`);
         const streamAudio = await soundcloudDescargar.download(url);
+        const archivoEscritura = fs.createWriteStream(rutaTemporalAudio);
+        
+        streamAudio.pipe(archivoEscritura);
 
-        // Enviar los datos directamente a Netlify a medida que llegan
-        streamAudio.pipe(res);
-
-        streamAudio.on('error', (err) => {
-            console.error('[STREAM ERROR]:', err);
-            if (!res.headersSent) res.status(500).json({ error: 'Error en transmisión.' });
+        await new Promise((resolve, reject) => {
+            archivoEscritura.on('finish', resolve);
+            archivoEscritura.on('error', reject);
         });
 
+        console.log(`[NEXUS HQ] Extrayendo arte de portada de SoundCloud...`);
+        let bufferCaratula = null;
+        if (urlCaratula) {
+            try {
+                const resCaratula = await fetch(urlCaratula);
+                if (resCaratula.ok) {
+                    const arrayBuffer = await resCaratula.arrayBuffer();
+                    bufferCaratula = Buffer.from(arrayBuffer);
+                }
+            } catch (imgErr) {
+                console.warn('[NEXUS] Portada omitida:', imgErr.message);
+            }
+        }
+
+        const tags = {
+            title: info.title || 'Nexus Track',
+            artist: artista,
+            album: 'SoundCloud HQ Stream',
+            image: bufferCaratula ? {
+                mime: "image/jpeg",
+                type: { id: 3, name: "front cover" },
+                description: "Cover",
+                imageBuffer: bufferCaratula
+            } : undefined
+        };
+
+        let audioBuffer = fs.readFileSync(rutaTemporalAudio);
+        let audioFinalConTags = ID3.write(tags, audioBuffer);
+
+        console.log(`[NEXUS HQ] Transmitiendo archivo final: ${tituloSeguro}.${extension}`);
+
+        // Encapsulado estricto con caracteres limpios
+        res.setHeader('Content-Disposition', `attachment; filename="${tituloSeguro}.${extension}"`);
+        res.setHeader('Content-Type', esFlac ? 'audio/x-flac' : 'audio/mpeg');
+        res.setHeader('Content-Length', audioFinalConTags.length);
+
+        res.end(audioFinalConTags);
+
+        fs.unlink(rutaTemporalAudio, () => {});
+
     } catch (error) {
-        console.error(`[SYSTEM ERROR]:`, error);
-        return res.status(500).json({ error: 'Error al conectar con SoundCloud de forma directa.' });
+        console.error(`[NEXUS HQ CRITICAL ERROR]:`, error);
+        if (fs.existsSync(rutaTemporalAudio)) fs.unlinkSync(rutaTemporalAudio);
+        return res.status(500).json({ error: 'Fallo al procesar el archivo multimedia.' });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor Nexus SoundCloud en línea.`);
+    console.log(`🚀 Motor de Inyección Multi-Caracteres Activo.`);
 });
